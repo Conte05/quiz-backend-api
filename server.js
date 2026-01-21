@@ -12,7 +12,7 @@ app.use(cors({
 app.use(express.json());
 
 // Conexão MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://Funchal:Funchal*123@sitefunchal.ouk1vxr.mongodb.net/quiz')
 .then(() => console.log('✅ MongoDB conectado'))
 .catch(err => console.error('❌ Erro MongoDB:', err.message));
 
@@ -107,3 +107,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API rodando na porta ${PORT}`);
 });
+
