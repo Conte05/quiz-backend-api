@@ -5,10 +5,7 @@ const cors = require('cors');
 const app = express();
 
 // Middlewares
-app.use(cors({
-    origin: ['https://testequiz.discloud.app', 'http://localhost:5500'],
-    credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 
 // Conexão MongoDB
@@ -107,4 +104,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API rodando na porta ${PORT}`);
 });
+
 
