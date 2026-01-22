@@ -102,6 +102,8 @@ app.get('/api/users/:id', async (req, res) => {
 });
 
 // 🏆 ROTAS DE RANKING
+
+// GET - Buscar ranking/resultados
 app.get('/api/results', async (req, res) => {
     try {
         const limit = req.query.limit ? parseInt(req.query.limit) : 0;
@@ -117,6 +119,39 @@ app.get('/api/results', async (req, res) => {
         res.json(results);
     } catch (error) {
         console.error('❌ Erro ao buscar ranking:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST - Salvar resultado no ranking
+app.post('/api/results', async (req, res) => {
+    try {
+        const { nome, email, telefone, cargo, administradora, cidade, estado, score, tempo } = req.body;
+        
+        console.log('💾 Salvando resultado:', nome, '-', score, 'acertos -', tempo, 'segundos');
+        
+        // Cria um novo usuário COM pontuação (para o ranking)
+        const user = new User({
+            nome,
+            email,
+            telefone,
+            cargo,
+            administradora,
+            cidade,
+            estado,
+            pontuacao: score,
+            tempo: tempo
+        });
+        
+        await user.save();
+        console.log('✅ Resultado salvo no ranking:', user._id);
+        
+        res.status(201).json({ 
+            success: true, 
+            id: user._id 
+        });
+    } catch (error) {
+        console.error('❌ Erro ao salvar resultado:', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 });
