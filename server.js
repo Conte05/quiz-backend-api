@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema({
         correta: Boolean
     }],
     pontuacao: { type: Number, default: 0 },
+    tempo: { type: Number, default: 0 }, // Tempo em segundos
     dataRegistro: { type: Date, default: Date.now }
 });
 
@@ -66,12 +67,13 @@ app.post('/api/users', async (req, res) => {
 
 app.put('/api/users/:id/respostas', async (req, res) => {
     try {
-        const { respostas, pontuacao } = req.body;
+        const { respostas, pontuacao, tempo } = req.body;
         const user = await User.findByIdAndUpdate(
             req.params.id,
-            { respostas, pontuacao },
+            { respostas, pontuacao, tempo },
             { new: true }
         );
+        console.log('✅ Respostas salvas:', user._id, '- Pontos:', pontuacao, '- Tempo:', tempo);
         res.json({ success: true, user });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -99,10 +101,28 @@ app.get('/api/users/:id', async (req, res) => {
     }
 });
 
+// 🏆 ROTAS DE RANKING
+app.get('/api/results', async (req, res) => {
+    try {
+        const limit = req.query.limit ? parseInt(req.query.limit) : 0;
+        
+        // Busca usuários que completaram o quiz (têm pontuação)
+        const results = await User.find({ pontuacao: { $gt: 0 } })
+            .sort({ pontuacao: -1, tempo: 1 }) // Ordena: maior pontuação, menor tempo
+            .limit(limit)
+            .select('nome email pontuacao tempo dataRegistro'); // Seleciona apenas campos necessários
+        
+        console.log(`📊 Ranking solicitado - ${limit ? `Top ${limit}` : 'Completo'} - ${results.length} resultados`);
+        
+        res.json(results);
+    } catch (error) {
+        console.error('❌ Erro ao buscar ranking:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API rodando na porta ${PORT}`);
 });
-
-
