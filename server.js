@@ -130,34 +130,7 @@ app.get('/api/results/find', async (req, res) => {
         
         console.log('🔍 Buscando usuário:', { nome, telefone, email, cargo });
         
-        // Cria um array de condições para busca (OR)
-        const conditions = [];
-        
-        if (nome) {
-            // Busca por nome completo (case insensitive)
-            conditions.push({ nome: { $regex: new RegExp(`^${nome.trim()}$`, 'i') } });
-        }
-        
-        if (telefone) {
-            // Remove formatação do telefone
-            const cleanPhone = telefone.replace(/\D/g, '');
-            conditions.push({ telefone: { $regex: new RegExp(cleanPhone) } });
-        }
-        
-        if (email) {
-            conditions.push({ email: email.toLowerCase().trim() });
-        }
-        
-        if (cargo) {
-            conditions.push({ cargo: { $regex: new RegExp(`^${cargo.trim()}$`, 'i') } });
-        }
-        
-        // Se não houver condições, retorna null
-        if (conditions.length === 0) {
-            return res.json(null);
-        }
-        
-        // Busca com OR - prioriza pela ordem: nome, telefone, email, cargo
+        // Busca com prioridade: nome, telefone, email, cargo
         let user = null;
         
         // 1. Tenta buscar por nome primeiro
@@ -231,12 +204,12 @@ app.post('/api/results', async (req, res) => {
     }
 });
 
-// 🔄 NOVA ROTA - Atualizar resultado existente (para retry)
+// 🔄 NOVA ROTA - Atualizar resultado existente
 app.put('/api/results/:id', async (req, res) => {
     try {
         const { nome, email, telefone, cargo, administradora, cidade, estado, score, tempo } = req.body;
         
-        console.log('🔄 Atualizando resultado:', req.params.id, '-', score, 'acertos -', tempo, 'segundos (TEMPO TOTAL ACUMULADO)');
+        console.log('🔄 Atualizando resultado:', req.params.id, '-', score, 'acertos -', tempo, 'segundos');
         
         // Atualiza o usuário existente com novo resultado
         const user = await User.findByIdAndUpdate(
@@ -250,17 +223,17 @@ app.put('/api/results/:id', async (req, res) => {
                 cidade,
                 estado,
                 pontuacao: score,
-                tempo: tempo, // TEMPO TOTAL ACUMULADO (inclui tentativas anteriores)
-                dataRegistro: new Date() // Atualiza a data
+                tempo: tempo,
+                dataRegistro: new Date()
             },
-            { new: true } // Retorna o documento atualizado
+            { new: true }
         );
         
         if (!user) {
             return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
         }
         
-        console.log('✅ Resultado atualizado:', user._id, '-', user.nome, '- Nova pontuação:', user.pontuacao, '- Tempo total:', user.tempo);
+        console.log('✅ Resultado atualizado:', user._id, '-', user.nome, '- Nova pontuação:', user.pontuacao, '- Tempo:', user.tempo);
         
         res.json({ 
             success: true, 
@@ -273,6 +246,39 @@ app.put('/api/results/:id', async (req, res) => {
     }
 });
 
+// 🔄 NOVA ROTA - Resetar usuário (zera tempo e pontuação para retry)
+app.put('/api/results/:id/reset', async (req, res) => {
+    try {
+        console.log('🔄 Resetando usuário:', req.params.id);
+        
+        // Reseta tempo e pontuação do usuário
+        const user = await User.findByIdAndUpdate(
+            req.params.id,
+            {
+                pontuacao: 0,
+                tempo: 0,
+                dataRegistro: new Date()
+            },
+            { new: true }
+        );
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
+        }
+        
+        console.log('✅ Usuário resetado:', user._id, '-', user.nome, '- Tempo: 0 - Pontuação: 0');
+        
+        res.json({ 
+            success: true, 
+            id: user._id,
+            user: user 
+        });
+    } catch (error) {
+        console.error('❌ Erro ao resetar usuário:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
@@ -281,5 +287,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`   GET  /api/results - Buscar ranking`);
     console.log(`   GET  /api/results/find - Buscar usuário existente`);
     console.log(`   POST /api/results - Criar novo resultado`);
-    console.log(`   PUT  /api/results/:id - Atualizar resultado (retry)`);
+    console.log(`   PUT  /api/results/:id - Atualizar resultado`);
+    console.log(`   PUT  /api/results/:id/reset - Resetar usuário (retry)`);
 });
