@@ -41,7 +41,7 @@ app.get('/', (req, res) => {
     res.json({ 
         status: 'online', 
         message: 'API Quiz Funchal rodando!',
-        version: '1.0.0'
+        version: '2.0.0'
     });
 });
 
@@ -123,6 +123,81 @@ app.get('/api/results', async (req, res) => {
     }
 });
 
+// 🔍 NOVA ROTA - Buscar usuário existente por múltiplos campos
+app.get('/api/results/find', async (req, res) => {
+    try {
+        const { nome, telefone, email, cargo } = req.query;
+        
+        console.log('🔍 Buscando usuário:', { nome, telefone, email, cargo });
+        
+        // Cria um array de condições para busca (OR)
+        const conditions = [];
+        
+        if (nome) {
+            // Busca por nome completo (case insensitive)
+            conditions.push({ nome: { $regex: new RegExp(`^${nome.trim()}$`, 'i') } });
+        }
+        
+        if (telefone) {
+            // Remove formatação do telefone
+            const cleanPhone = telefone.replace(/\D/g, '');
+            conditions.push({ telefone: { $regex: new RegExp(cleanPhone) } });
+        }
+        
+        if (email) {
+            conditions.push({ email: email.toLowerCase().trim() });
+        }
+        
+        if (cargo) {
+            conditions.push({ cargo: { $regex: new RegExp(`^${cargo.trim()}$`, 'i') } });
+        }
+        
+        // Se não houver condições, retorna null
+        if (conditions.length === 0) {
+            return res.json(null);
+        }
+        
+        // Busca com OR - prioriza pela ordem: nome, telefone, email, cargo
+        let user = null;
+        
+        // 1. Tenta buscar por nome primeiro
+        if (nome) {
+            user = await User.findOne({ nome: { $regex: new RegExp(`^${nome.trim()}$`, 'i') } })
+                .sort({ dataRegistro: -1 }); // Pega o mais recente
+        }
+        
+        // 2. Se não achou por nome, tenta por telefone
+        if (!user && telefone) {
+            const cleanPhone = telefone.replace(/\D/g, '');
+            user = await User.findOne({ telefone: { $regex: new RegExp(cleanPhone) } })
+                .sort({ dataRegistro: -1 });
+        }
+        
+        // 3. Se não achou, tenta por email
+        if (!user && email) {
+            user = await User.findOne({ email: email.toLowerCase().trim() })
+                .sort({ dataRegistro: -1 });
+        }
+        
+        // 4. Por último, tenta por cargo
+        if (!user && cargo) {
+            user = await User.findOne({ cargo: { $regex: new RegExp(`^${cargo.trim()}$`, 'i') } })
+                .sort({ dataRegistro: -1 });
+        }
+        
+        if (user) {
+            console.log('✅ Usuário encontrado:', user._id, '-', user.nome, '- Pontuação:', user.pontuacao, '- Tempo:', user.tempo);
+        } else {
+            console.log('ℹ️ Usuário não encontrado');
+        }
+        
+        res.json(user);
+    } catch (error) {
+        console.error('❌ Erro ao buscar usuário:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // POST - Salvar resultado no ranking
 app.post('/api/results', async (req, res) => {
     try {
@@ -156,8 +231,55 @@ app.post('/api/results', async (req, res) => {
     }
 });
 
+// 🔄 NOVA ROTA - Atualizar resultado existente (para retry)
+app.put('/api/results/:id', async (req, res) => {
+    try {
+        const { nome, email, telefone, cargo, administradora, cidade, estado, score, tempo } = req.body;
+        
+        console.log('🔄 Atualizando resultado:', req.params.id, '-', score, 'acertos -', tempo, 'segundos (TEMPO TOTAL ACUMULADO)');
+        
+        // Atualiza o usuário existente com novo resultado
+        const user = await User.findByIdAndUpdate(
+            req.params.id,
+            {
+                nome,
+                email,
+                telefone,
+                cargo,
+                administradora,
+                cidade,
+                estado,
+                pontuacao: score,
+                tempo: tempo, // TEMPO TOTAL ACUMULADO (inclui tentativas anteriores)
+                dataRegistro: new Date() // Atualiza a data
+            },
+            { new: true } // Retorna o documento atualizado
+        );
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
+        }
+        
+        console.log('✅ Resultado atualizado:', user._id, '-', user.nome, '- Nova pontuação:', user.pontuacao, '- Tempo total:', user.tempo);
+        
+        res.json({ 
+            success: true, 
+            id: user._id,
+            user: user 
+        });
+    } catch (error) {
+        console.error('❌ Erro ao atualizar resultado:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API rodando na porta ${PORT}`);
+    console.log(`📍 Rotas disponíveis:`);
+    console.log(`   GET  /api/results - Buscar ranking`);
+    console.log(`   GET  /api/results/find - Buscar usuário existente`);
+    console.log(`   POST /api/results - Criar novo resultado`);
+    console.log(`   PUT  /api/results/:id - Atualizar resultado (retry)`);
 });
