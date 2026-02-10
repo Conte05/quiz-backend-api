@@ -4,6 +4,11 @@ const cors = require('cors');
 
 const app = express();
 
+const path = require('path');
+
+// SERVIR A PASTA DO FRONT (onde estão images, styles, js, etc.)
+app.use(express.static(path.join(__dirname)));
+
 // Middlewares
 app.use(cors());
 app.use(express.json());
@@ -290,3 +295,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`   PUT  /api/results/:id - Atualizar resultado`);
     console.log(`   PUT  /api/results/:id/reset - Resetar usuário (retry)`);
 });
+
