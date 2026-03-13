@@ -117,7 +117,7 @@ app.get('/api/export', async (req, res) => {
         const users = await User.find().sort({ dataRegistro: -1 });
 
         // Cabeçalho CSV
-        const header = 'Nome,Email,Cargo,Telefone,Administradora,Cidade,Estado,Produtos,Servicos Selecionados,Resposta P1,Resposta P2,Resposta P3,Resposta P4,Resposta P5,Data Registro';
+        const header = 'Nome,Email,Cargo,Telefone,Administradora,Cidade,Estado,Produtos,Servicos Selecionados,Resposta P1,Resposta P2,Resposta P3,Resposta P4,Resposta P5,Resposta P6,Resposta P7,Resposta P8,Resposta P9,Resposta P10,Resposta P11,Resposta P12,Resposta P13,Resposta P14,Resposta P15,Resposta P16,Resposta P17,Resposta P18,Data Registro';
 
         const rows = users.map(u => {
             const produtos = (u.produtos || []).join(' | ');
@@ -130,7 +130,7 @@ app.get('/api/export', async (req, res) => {
                 return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
             };
 
-            const respostaCols = Array.from({ length: 5 }, (_, i) => {
+            const respostaCols = Array.from({ length: 18 }, (_, i) => {
                 const r = (u.respostas || [])[i];
                 return r ? esc(r.resposta) : '';
             });
