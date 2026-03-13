@@ -29,20 +29,21 @@ const userSchema = new mongoose.Schema({
     cidade: { type: String, required: true },
     produtos: [String],
     outros: String,
+    servicosSelecionados: [String],
     respostas: [{
         pergunta: String,
         resposta: String,
         correta: Boolean
     }],
     pontuacao: { type: Number, default: 0 },
-    tempo: { type: Number, default: 0 }, // Tempo em segundos
+    tempo: { type: Number, default: 0 },
     dataRegistro: { type: Date, default: Date.now }
 });
 
 const User = mongoose.model('User', userSchema);
 
 // Rotas
-app.get('/', (req, res) => {
+app.get('/api/status', (req, res) => {
     res.json({ 
         status: 'online', 
         message: 'API Quiz Funchal rodando!',
@@ -72,10 +73,14 @@ app.post('/api/users', async (req, res) => {
 
 app.put('/api/users/:id/respostas', async (req, res) => {
     try {
-        const { respostas, pontuacao, tempo } = req.body;
+        const { respostas, pontuacao, tempo, servicosSelecionados } = req.body;
+        const updateData = { respostas, pontuacao, tempo };
+        if (servicosSelecionados) {
+            updateData.servicosSelecionados = servicosSelecionados;
+        }
         const user = await User.findByIdAndUpdate(
             req.params.id,
-            { respostas, pontuacao, tempo },
+            updateData,
             { new: true }
         );
         console.log('✅ Respostas salvas:', user._id, '- Pontos:', pontuacao, '- Tempo:', tempo);
@@ -106,180 +111,43 @@ app.get('/api/users/:id', async (req, res) => {
     }
 });
 
-// 🏆 ROTAS DE RANKING
-
-// GET - Buscar ranking/resultados
-app.get('/api/results', async (req, res) => {
+// 📥 Exportar dados como CSV (planilha)
+app.get('/api/export', async (req, res) => {
     try {
-        const limit = req.query.limit ? parseInt(req.query.limit) : 0;
-        
-        // Busca usuários que completaram o quiz (têm pontuação)
-        const results = await User.find({ pontuacao: { $gt: 0 } })
-            .sort({ pontuacao: -1, tempo: 1 }) // Ordena: maior pontuação, menor tempo
-            .limit(limit)
-            .select('nome email pontuacao tempo dataRegistro'); // Seleciona apenas campos necessários
-        
-        console.log(`📊 Ranking solicitado - ${limit ? `Top ${limit}` : 'Completo'} - ${results.length} resultados`);
-        
-        res.json(results);
-    } catch (error) {
-        console.error('❌ Erro ao buscar ranking:', error.message);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
+        const users = await User.find().sort({ dataRegistro: -1 });
 
-// 🔍 NOVA ROTA - Buscar usuário existente por múltiplos campos
-app.get('/api/results/find', async (req, res) => {
-    try {
-        const { nome, telefone, email, cargo } = req.query;
-        
-        console.log('🔍 Buscando usuário:', { nome, telefone, email, cargo });
-        
-        // Busca com prioridade: nome, telefone, email, cargo
-        let user = null;
-        
-        // 1. Tenta buscar por nome primeiro
-        if (nome) {
-            user = await User.findOne({ nome: { $regex: new RegExp(`^${nome.trim()}$`, 'i') } })
-                .sort({ dataRegistro: -1 }); // Pega o mais recente
-        }
-        
-        // 2. Se não achou por nome, tenta por telefone
-        if (!user && telefone) {
-            const cleanPhone = telefone.replace(/\D/g, '');
-            user = await User.findOne({ telefone: { $regex: new RegExp(cleanPhone) } })
-                .sort({ dataRegistro: -1 });
-        }
-        
-        // 3. Se não achou, tenta por email
-        if (!user && email) {
-            user = await User.findOne({ email: email.toLowerCase().trim() })
-                .sort({ dataRegistro: -1 });
-        }
-        
-        // 4. Por último, tenta por cargo
-        if (!user && cargo) {
-            user = await User.findOne({ cargo: { $regex: new RegExp(`^${cargo.trim()}$`, 'i') } })
-                .sort({ dataRegistro: -1 });
-        }
-        
-        if (user) {
-            console.log('✅ Usuário encontrado:', user._id, '-', user.nome, '- Pontuação:', user.pontuacao, '- Tempo:', user.tempo);
-        } else {
-            console.log('ℹ️ Usuário não encontrado');
-        }
-        
-        res.json(user);
-    } catch (error) {
-        console.error('❌ Erro ao buscar usuário:', error.message);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
+        // Cabeçalho CSV
+        const header = 'Nome,Email,Cargo,Telefone,Administradora,Cidade,Estado,Produtos,Servicos Selecionados,Respostas,Pontuacao,Data Registro';
 
-// POST - Salvar resultado no ranking
-app.post('/api/results', async (req, res) => {
-    try {
-        const { nome, email, telefone, cargo, administradora, cidade, estado, score, tempo } = req.body;
-        
-        console.log('💾 Salvando resultado:', nome, '-', score, 'acertos -', tempo, 'segundos');
-        
-        // Cria um novo usuário COM pontuação (para o ranking)
-        const user = new User({
-            nome,
-            email,
-            telefone,
-            cargo,
-            administradora,
-            cidade,
-            estado,
-            pontuacao: score,
-            tempo: tempo
+        const rows = users.map(u => {
+            const produtos = (u.produtos || []).join(' | ');
+            const servicos = (u.servicosSelecionados || []).join(' | ');
+            const respostas = (u.respostas || []).map((r, i) => `P${i+1}: ${r.resposta} (${r.correta ? 'Certa' : 'Errada'})`).join(' | ');
+            const data = u.dataRegistro ? new Date(u.dataRegistro).toLocaleString('pt-BR') : '';
+
+            // Escapa campos com vírgula ou aspas
+            const esc = (val) => {
+                const s = String(val || '');
+                return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+            };
+
+            return [
+                esc(u.nome), esc(u.email), esc(u.cargo), esc(u.telefone),
+                esc(u.administradora), esc(u.cidade), esc(u.estado),
+                esc(produtos), esc(servicos), esc(respostas),
+                u.pontuacao || 0, esc(data)
+            ].join(',');
         });
-        
-        await user.save();
-        console.log('✅ Resultado salvo no ranking:', user._id);
-        
-        res.status(201).json({ 
-            success: true, 
-            id: user._id 
-        });
-    } catch (error) {
-        console.error('❌ Erro ao salvar resultado:', error.message);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
 
-// 🔄 NOVA ROTA - Atualizar resultado existente
-app.put('/api/results/:id', async (req, res) => {
-    try {
-        const { nome, email, telefone, cargo, administradora, cidade, estado, score, tempo } = req.body;
-        
-        console.log('🔄 Atualizando resultado:', req.params.id, '-', score, 'acertos -', tempo, 'segundos');
-        
-        // Atualiza o usuário existente com novo resultado
-        const user = await User.findByIdAndUpdate(
-            req.params.id,
-            {
-                nome,
-                email,
-                telefone,
-                cargo,
-                administradora,
-                cidade,
-                estado,
-                pontuacao: score,
-                tempo: tempo,
-                dataRegistro: new Date()
-            },
-            { new: true }
-        );
-        
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
-        }
-        
-        console.log('✅ Resultado atualizado:', user._id, '-', user.nome, '- Nova pontuação:', user.pontuacao, '- Tempo:', user.tempo);
-        
-        res.json({ 
-            success: true, 
-            id: user._id,
-            user: user 
-        });
-    } catch (error) {
-        console.error('❌ Erro ao atualizar resultado:', error.message);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
+        const csv = '\uFEFF' + header + '\n' + rows.join('\n');
 
-// 🔄 NOVA ROTA - Resetar usuário (zera tempo e pontuação para retry)
-app.put('/api/results/:id/reset', async (req, res) => {
-    try {
-        console.log('🔄 Resetando usuário:', req.params.id);
-        
-        // Reseta tempo e pontuação do usuário
-        const user = await User.findByIdAndUpdate(
-            req.params.id,
-            {
-                pontuacao: 0,
-                tempo: 0,
-                dataRegistro: new Date()
-            },
-            { new: true }
-        );
-        
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
-        }
-        
-        console.log('✅ Usuário resetado:', user._id, '-', user.nome, '- Tempo: 0 - Pontuação: 0');
-        
-        res.json({ 
-            success: true, 
-            id: user._id,
-            user: user 
-        });
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename=quiz-participantes.csv');
+        res.send(csv);
+
+        console.log(`📥 Exportação CSV - ${users.length} registros`);
     } catch (error) {
-        console.error('❌ Erro ao resetar usuário:', error.message);
+        console.error('❌ Erro na exportação:', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -289,10 +157,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API rodando na porta ${PORT}`);
     console.log(`📍 Rotas disponíveis:`);
-    console.log(`   GET  /api/results - Buscar ranking`);
-    console.log(`   GET  /api/results/find - Buscar usuário existente`);
-    console.log(`   POST /api/results - Criar novo resultado`);
-    console.log(`   PUT  /api/results/:id - Atualizar resultado`);
-    console.log(`   PUT  /api/results/:id/reset - Resetar usuário (retry)`);
+    console.log(`   GET  /api/users - Listar usuários`);
+    console.log(`   POST /api/users - Criar usuário`);
+    console.log(`   PUT  /api/users/:id/respostas - Salvar respostas`);
 });
-
