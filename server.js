@@ -117,12 +117,11 @@ app.get('/api/export', async (req, res) => {
         const users = await User.find().sort({ dataRegistro: -1 });
 
         // Cabeçalho CSV
-        const header = 'Nome,Email,Cargo,Telefone,Administradora,Cidade,Estado,Produtos,Servicos Selecionados,Respostas,Pontuacao,Data Registro';
+        const header = 'Nome,Email,Cargo,Telefone,Administradora,Cidade,Estado,Produtos,Servicos Selecionados,Resposta P1,Resposta P2,Resposta P3,Resposta P4,Resposta P5,Data Registro';
 
         const rows = users.map(u => {
             const produtos = (u.produtos || []).join(' | ');
             const servicos = (u.servicosSelecionados || []).join(' | ');
-            const respostas = (u.respostas || []).map((r, i) => `P${i+1}: ${r.resposta} (${r.correta ? 'Certa' : 'Errada'})`).join(' | ');
             const data = u.dataRegistro ? new Date(u.dataRegistro).toLocaleString('pt-BR') : '';
 
             // Escapa campos com vírgula ou aspas
@@ -131,11 +130,16 @@ app.get('/api/export', async (req, res) => {
                 return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
             };
 
+            const respostaCols = Array.from({ length: 5 }, (_, i) => {
+                const r = (u.respostas || [])[i];
+                return r ? esc(r.resposta) : '';
+            });
+
             return [
                 esc(u.nome), esc(u.email), esc(u.cargo), esc(u.telefone),
                 esc(u.administradora), esc(u.cidade), esc(u.estado),
-                esc(produtos), esc(servicos), esc(respostas),
-                u.pontuacao || 0, esc(data)
+                esc(produtos), esc(servicos), ...respostaCols,
+                esc(data)
             ].join(',');
         });
 
